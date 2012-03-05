@@ -11,7 +11,7 @@ There is a EventListener class to subscribe to events in Photoshop.
 Example
 -------
 
-    from photoshopConnectio import Connection, Listener
+    from photoshopConnection.connection import Connection, EventListener
     
     conn = Connection()
     conn.connect('Swordfish')
