@@ -20,6 +20,10 @@ Example
     msg = conn.sendJavascript('$.version;')
     print msg.content
     
+    fh = open('/tmp/thumbnail.jpg', 'wb')
+    conn.thumbnail(fh, 300, 200)
+    fh.close()
+    
     def callback(message):
         print message.content
     

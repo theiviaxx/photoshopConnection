@@ -1,19 +1,58 @@
-""" main """
+#############################################################################
+# 				Documentation				    #
+#############################################################################
+"""A python TCP socket connection to Photoshop CS5.5.  This is a simple
+
+wrapper class to facilitate sending arbitrary JavaScript to Photoshop and
+receiving the result of the script.  The Connection objet also has a
+thumbnail method to write the a JPEG to a file-like object of the current doc
+open in Photoshop.
+
+There is a EventListener class to subscribe to events in Photoshop.
+
+Example
+-------
+
+from photoshopConnectio import Connection, Listener
+
+conn = Connection()
+conn.connect('Swordfish')
+conn.sendJavascript('alert("Hello World");')
+
+msg = conn.sendJavascript('$.version;')
+print msg.content
+
+fh = open('/tmp/thumbnail.jpg', 'wb')
+conn.thumbnail(fh, 300, 200)
+fh.close()
+
+def callback(message):
+    print message.content
+
+listener = EventListener()
+listener.connect('Swordfish')
+listener.subscribe('foregroundColorChanged', callback)
+
+"""
+
+
 
 import sys
 import socket
 import struct
 
 try:
+    # PyCrypto is much faster, but requires a built binary
     from Crypto.Cipher import DES3
     PYCRYPTO = True
 except ImportError:
+    # pyDes is pure python, but slower.  Should be ok for sending scripts
     import pyDes
     PYCRYPTO = False
 
 from pbkdf2 import PBKDF2
 
-
+__all__ = ['Connection', 'Listener']
 # _pythonMajorVersion is used to handle Python2 and Python3 differences.
 _pythonMajorVersion = sys.version_info[0]
 
@@ -21,6 +60,9 @@ _pythonMajorVersion = sys.version_info[0]
 def enum(*sequential, **named):
     enums = dict(zip(sequential, range(len(sequential))), **named)
     return type('Enum', (), enums)
+
+def empty(*args, **kawrgs):
+    pass
 
 
 class Connection(object):
@@ -75,6 +117,42 @@ class Connection(object):
                 return True
         else:
             return False
+    
+    def thumbnail(self, fileObj, width=200, height=None):
+	height = height or width
+	
+	script = 'var idNS = stringIDToTypeID( "sendDocumentThumbnailToNetworkClient" );'
+	script += 'var desc1 = new ActionDescriptor();'
+	script += 'desc1.putInteger( stringIDToTypeID( "width" ), %i );' % width
+	script += 'desc1.putInteger( stringIDToTypeID( "height" ), %i );' % height
+	script += 'desc1.putInteger( stringIDToTypeID( "format" ), 1 );'
+	script += 'executeAction( idNS, desc1, DialogModes.NO );'
+	
+	msg = self.sendJavascript(script)
+	if msg.status == Messge.Status.OK:
+	    # The first 4 bytes are the type, which for this module, we only use JPG
+	    fileObj.write(msg.content[4:])
+	
+	return msg
+
+
+class EventListener(object):
+    def __init__(self):
+	self.IDs = {}
+    
+    def connect(self, passwd):
+	self.socket = Connection()
+	self.socket.connect(passwd)
+    
+    def subscribe(self, eventName, callback=empty):
+	script = "var idNS = stringIDToTypeID( 'networkEventSubscribe' );"; 
+	script += "var desc1 = new ActionDescriptor();";
+	script += "desc1.putClass( stringIDToTypeID( 'eventIDAttr' ), stringIDToTypeID( '" + eventName + "' ) );";
+	script += "executeAction( idNS, desc1, DialogModes.NO );";
+	script += "''";
+	msg = self.socket.sendJavascript(script);
+	
+	self.IDs[msg.id] = callback
 
 
 class EncryptDecrypt(object):
@@ -160,6 +238,14 @@ class Messge(object):
 if __name__ == '__main__':
     conn = Connection()
     conn.connect('Swordfish')
+    conn.sendJavascript('alert("Hello World");')
     
-    msg = conn.sendJavascript('alert(\"hello\");')
+    msg = conn.sendJavascript('$.version;')
     print msg.content
+    
+    def callback(message):
+	print message.content
+    
+    listener = EventListener()
+    listener.connect('Swordfish')
+    listener.subscribe('foregroundColorChanged', callback)
