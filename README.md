@@ -11,18 +11,18 @@ There is a EventListener class to subscribe to events in Photoshop.
 Example
 -------
 
-from photoshopConnectio import Connection, Listener
-
-conn = Connection()
-conn.connect('Swordfish')
-conn.sendJavascript('alert("Hello World");')
-
-msg = conn.sendJavascript('$.version;')
-print msg.content
-
-def callback(message):
-    print message.content
-
-listener = EventListener()
-listener.connect('Swordfish')
-listener.subscribe('foregroundColorChanged', callback)
+    from photoshopConnectio import Connection, Listener
+    
+    conn = Connection()
+    conn.connect('Swordfish')
+    conn.sendJavascript('alert("Hello World");')
+    
+    msg = conn.sendJavascript('$.version;')
+    print msg.content
+    
+    def callback(message):
+        print message.content
+    
+    listener = EventListener()
+    listener.connect('Swordfish')
+    listener.subscribe('foregroundColorChanged', callback)
