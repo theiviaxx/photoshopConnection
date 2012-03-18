@@ -1,5 +1,9 @@
 Photoshop Connection
 --------------------
+
+Photoshop Connection is released under the MIT license. It is simple and easy to understand and places almost no restrictions on what you can do with Photoshop Connection.
+[More Information](http://en.wikipedia.org/wiki/MIT_License)
+
 A python TCP socket connection to Photoshop CS5.5.  This is a simple
 wrapper class to facilitate sending arbitrary JavaScript to Photoshop and
 receiving the result of the script.  The Connection objet also has a
