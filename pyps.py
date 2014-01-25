@@ -53,7 +53,6 @@ except ImportError:
 
 from pbkdf2 import PBKDF2
 
-__all__ = ['Connection', 'EventListener']
 # _pythonMajorVersion is used to handle Python2 and Python3 differences.
 _pythonMajorVersion = sys.version_info[0]
 

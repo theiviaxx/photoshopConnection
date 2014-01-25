@@ -1,3 +1,4 @@
+.gitignore
 photoshopConnection.wpr
 *.pyc
 touchsdk/*
