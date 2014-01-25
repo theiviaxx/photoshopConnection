@@ -1,1 +1,3 @@
 photoshopConnection.wpr
+*.pyc
+touchsdk/*

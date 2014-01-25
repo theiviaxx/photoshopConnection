@@ -569,7 +569,7 @@ class des(_baseDes):
 			return ''
 		if len(data) % self.block_size != 0:
 			if crypt_type == des.DECRYPT: # Decryption must work on 8 byte blocks
-				raise ValueError("Invalid data length, data must be a multiple of " + str(self.block_size) + " bytes\n.")
+				raise ValueError("Invalid data length, data must be a multiple of " + str(self.block_size) + " bytes\n" + data + ".")
 			if not self.getPadding():
 				raise ValueError("Invalid data length, data must be a multiple of " + str(self.block_size) + " bytes\n. Try setting the optional padding character")
 			else:

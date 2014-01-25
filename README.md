@@ -15,22 +15,29 @@ There is a EventListener class to subscribe to events in Photoshop.
 Example
 -------
 
-    from photoshopConnection.connection import Connection, EventListener
+    from pyps import Connection, EventListener
     
     conn = Connection()
-    conn.connect('Swordfish')
-    conn.sendJavascript('alert("Hello World");')
-    
-    msg = conn.sendJavascript('$.version;')
-    print msg.content
-    
-    fh = open('/tmp/thumbnail.jpg', 'wb')
-    conn.thumbnail(fh, 300, 200)
-    fh.close()
-    
-    def callback(message):
+    conn.connect(passwd='Swordfish')
+    conn.send('alert("Hello");', True)
+
+    print conn.send('$.version;', True)
+
+    def callback(message, *args):
+        print message.command
         print message.content
-    
-    listener = EventListener()
-    listener.connect('Swordfish')
+
+    def callback2(message, *args):
+        print message.command
+        print message.content
+        print args
+
+    listener = EventListener(conn)
+    listener.start()
     listener.subscribe('foregroundColorChanged', callback)
+    listener.subscribe('toolChanged', callback2, (True, 'xxx'))
+    listener.subscribe('currentDocumentChanged', callback)
+    
+    ## -- We need to keep the EventListener alive
+    while True:
+        time.sleep(1.0)
