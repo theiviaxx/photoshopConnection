@@ -1,4 +1,7 @@
 .gitignore
+.coverage
 photoshopConnection.wpr
 *.pyc
 touchsdk/*
+pyps.egg-info/*
+htmlcov/*

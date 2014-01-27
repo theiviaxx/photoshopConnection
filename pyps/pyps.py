@@ -37,9 +37,8 @@ There is a EventListener class to subscribe to events in Photoshop.
 import sys
 import socket
 import struct
-import time
 import logging
-from threading import Thread
+from threading import Thread, Event
 from Queue import Queue
 
 try:
@@ -53,8 +52,8 @@ except ImportError:
 
 from pbkdf2 import PBKDF2
 
-# _pythonMajorVersion is used to handle Python2 and Python3 differences.
-_pythonMajorVersion = sys.version_info[0]
+# PYTHON_MAJOR_VERSION is used to handle Python2 and Python3 differences.
+PYTHON_MAJOR_VERSION = sys.version_info[0]
 
 logging.basicConfig()
 LOGGER = logging.getLogger('PSLIB')
@@ -72,9 +71,6 @@ def enum(*sequential, **named):
     enums = dict(zip(sequential, range(len(sequential))), **named)
     return type('Enum', (), enums)
 
-def empty(*args, **kawrgs):
-    pass
-
 
 class Connection(object):
     """Main connection class to Photoshop.  Handles sending/receving and
@@ -85,65 +81,70 @@ class Connection(object):
     PROTOCOL_LENGTH = 4 + 4 + 4
     COMM_LENGTH = 4
     NO_COMM_ERROR = 0
+    COMM_ERROR = 1
 
     def __init__(self):
         self._host = None
-        self._isConnected = False
+        self._isconnected = False
         self._socket = socket.socket()
         self._crypt = None
         self._id = 0
 
     @property
     def isConnected(self):
-        return self._isConnected
+        """Whether the connection is connected or not"""
+        return self._isconnected
 
-    def connect(self, host=None, passwd=''):
+    def connect(self, passwd='', host=None):
         host = host or HOST
         try:
             self._socket.connect((host, self.PORT))
             self._socket.settimeout(0.2)
-            self._isConnected = True
+            self._isconnected = True
             LOGGER.debug('Connected')
-        except socket.error, e:
-            self.socket = None
-            self.isConnected = False
-            LOGGER.error('Could not connect: %s' % str(e))
+        except socket.error, err:
+            self._socket = None
+            self._isconnected = False
+            LOGGER.error('Could not connect: %s', str(err))
         
         self._crypt = EncryptDecrypt(passwd)
     
-    def disconnect(self):
+    def close(self):
         self._socket.close()
         self._socket = None
-        self._isConnected = False
+        self._isconnected = False
         LOGGER.debug('Disconnected')
     
     def recv(self):
         """Receives a message from PS and decrypts it and returns a Message"""
         LOGGER.debug('Receiving')
         try:
-            messageLength = struct.unpack('>i', self._socket.recv(4))[0]
-            messageLength -= Connection.COMM_LENGTH
-            LOGGER.debug('Length: %i' % messageLength)
+            message_length = struct.unpack('>i', self._socket.recv(4))[0]
+            message_length -= Connection.COMM_LENGTH
+            LOGGER.debug('Length: %i', message_length)
         except socket.timeout:
             return None
         
-        commStatus = struct.unpack('>i', self._socket.recv(4))[0]
-        LOGGER.debug('Status: %i' % commStatus)
-        bytesReceived = 0
+        comm_status = struct.unpack('>i', self._socket.recv(4))[0]
+        LOGGER.debug('Status: %i', comm_status)
+        bytes_received = 0
         message = ""
         
-        while bytesReceived < messageLength:
-            recvLen = 1024 if (messageLength - bytesReceived >= 1024) else messageLength - bytesReceived
-            bytesReceived += recvLen
-            LOGGER.debug('Received %i' % bytesReceived)
-            message += self._socket.recv(recvLen)
+        while bytes_received < message_length:
+            if message_length - bytes_received >= 1024:
+                recv_len = 1024
+            else:
+                recv_len = message_length - bytes_received
+            bytes_received += recv_len
+            LOGGER.debug('Received %i', bytes_received)
+            message += self._socket.recv(recv_len)
         
-        if commStatus == 0:
+        if comm_status == 0:
             message = self._crypt.decrypt(message)
         else:
-            print message
+            return Message(len(message), Connection.COMM_ERROR, message)
         
-        msg = Message(messageLength, commStatus, message)
+        msg = Message(message_length, comm_status, message)
 
         return msg
     
@@ -151,23 +152,24 @@ class Connection(object):
         """Sends a JavaScript command to PS
 
         :param content: Script content
-        :param recv: Whether or not to wait for a response.  Good for single commands
+        :param recv: Whether or not to wait for a response.  Good for single
+                     commands
         """
-        LOGGER.debug('Sending: %s' % content)
-        allBytes = struct.pack('>i', Connection.PROTOCOL_VERSION)
-        allBytes += struct.pack('>i', self._id)
-        allBytes += struct.pack('>i', 2)
+        LOGGER.debug('Sending: %s', content)
+        all_bytes = struct.pack('>i', Connection.PROTOCOL_VERSION)
+        all_bytes += struct.pack('>i', self._id)
+        all_bytes += struct.pack('>i', 2)
         self._id += 1
-        for n in content:
-            allBytes += struct.pack('>c', n)
+        for char in content:
+            all_bytes += struct.pack('>c', char)
 
-        encryptedBytes = self._crypt.encrypt(allBytes)
+        encrypted_bytes = self._crypt.encrypt(all_bytes)
 
-        messageLength = Connection.COMM_LENGTH + len(encryptedBytes)
+        message_length = Connection.COMM_LENGTH + len(encrypted_bytes)
 
-        self._socket.send(struct.pack('>i', messageLength))
+        self._socket.send(struct.pack('>i', message_length))
         self._socket.send(struct.pack('>i', Connection.NO_COMM_ERROR))
-        self._socket.send(encryptedBytes)
+        self._socket.send(encrypted_bytes)
         LOGGER.debug('Sent')
 
         if recv:
@@ -180,38 +182,44 @@ class Connection(object):
 
 class EventListener(Thread):
     """Event thread to handle event messages from Photoshop"""
-    def __init__(self, connection, interval=None, *args, **kwargs):
+    def __init__(self, passwd, host=None, interval=None, *args, **kwargs):
         super(EventListener, self).__init__(*args, **kwargs)
         
-        self._connection = connection
+        self._connection = Connection()
+        self._connection.connect(passwd, host)
         self._sub = Queue()
         self._unsub = Queue()
         self._ids = {}
         self._interval = interval
+        self._stop = Event()
 
     def subscribe(self, eventName, callback, args=()):
         self._sub.put({'eventName': eventName, 'func': callback, 'args': args})
 
     def unsubscribe(self, eventName, callback):
         self._unsub.put({'eventName': eventName, 'func': callback})
+
+    def stop(self):
+        self._stop.set()
+        self._connection.close()
     
     def run(self):
-        while 1:
+        while not self._stop.is_set():
             ## -- Add any subs
             while self._sub.qsize():
                 item = self._sub.get()
-                LOGGER.debug('Subscribing %s' % item)
-                self._connection.send(SUBSCRIBE % item['eventName'])
-                msg = self._connection.recv()
+                LOGGER.debug('Subscribing %s', item)
+                msg = self._connection.send(SUBSCRIBE % item['eventName'], True)
                 if msg is not None:
                     self._ids[msg.id] = item
 
             ## -- Remove subs
             while self._unsub.qsize():
                 item = self._unsub.get()
-                LOGGER.debug('Unsubscribing %s' % item)
+                LOGGER.debug('Unsubscribing %s', item)
                 for id_, sub in self._ids.iteritems():
-                    if sub['eventName'] == item['eventName'] and sub['func'] == item['func']:
+                    if sub['eventName'] == item['eventName'] and \
+                    sub['func'] == item['func']:
                         del self._ids[id_]
                         break
             
@@ -225,17 +233,20 @@ class EventListener(Thread):
                 obj['func'](message, *obj['args'])
 
             if self._interval:
-                time.sleep(self._interval)
+                self._stop.wait(self._interval)
 
 
 class EncryptDecrypt(object):
     """Handles the encrypting and dectrypting of bytes"""
+    SALT = 'Adobe Photoshop'
+    ITERACTIONCOUNT = 1000
+    KEY_LENGTH = 24
     def __init__(self, passPhrase):
-        SALT = 'Adobe Photoshop'
-        ITERACTIONCOUNT = 1000
-        KEY_LENGTH = 24
-
-        key = PBKDF2(bytes(passPhrase), bytes(SALT), iterations=ITERACTIONCOUNT).read(KEY_LENGTH)
+        key = PBKDF2(
+            bytes(passPhrase),
+            bytes(EncryptDecrypt.SALT),
+            iterations=EncryptDecrypt.ITERACTIONCOUNT
+        ).read(EncryptDecrypt.KEY_LENGTH)
         iv = '\0\0\0\0\0\0\0\0'
         self.block_size = 8
 
@@ -243,8 +254,18 @@ class EncryptDecrypt(object):
             self.enc = DES3.new(key, DES3.MODE_CBC, iv)
             self.dec = DES3.new(key, DES3.MODE_CBC, iv)
         else:
-            self.enc = py_des.triple_des(key, py_des.CBC, iv, padmode=py_des.PAD_PKCS5)
-            self.dec = py_des.triple_des(key, py_des.CBC, iv, padmode=py_des.PAD_PKCS5)
+            self.enc = py_des.triple_des(
+                key,
+                py_des.CBC,
+                iv,
+                padmode=py_des.PAD_PKCS5
+            )
+            self.dec = py_des.triple_des(
+                key,
+                py_des.CBC,
+                iv,
+                padmode=py_des.PAD_PKCS5
+            )
 
     def encrypt(self, b):
         data = self._padData(b) if PYCRYPTO else b
@@ -257,7 +278,7 @@ class EncryptDecrypt(object):
     # Stolen from py_des for PKCS5 padding when using PyCrypto
     def _padData(self, data):
         pad_len = 8 - (len(data) % self.block_size)
-        if _pythonMajorVersion < 3:
+        if PYTHON_MAJOR_VERSION < 3:
             data += pad_len * chr(pad_len)
         else:
             data += bytes([pad_len] * pad_len)
@@ -269,7 +290,7 @@ class EncryptDecrypt(object):
         if not data:
             return data
 
-        if _pythonMajorVersion < 3:
+        if PYTHON_MAJOR_VERSION < 3:
             pad_len = ord(data[-1])
         else:
             pad_len = data[-1]
@@ -280,9 +301,10 @@ class EncryptDecrypt(object):
     def _guardAgainstUnicode(self, data):
         # Only accept byte strings or ascii unicode values, otherwise
         # there is no way to correctly decode the data into bytes.
-        if _pythonMajorVersion < 3:
+        if PYTHON_MAJOR_VERSION < 3:
             if isinstance(data, unicode):
-                raise ValueError("py_des can only work with bytes, not Unicode strings.")
+                raise ValueError("py_des can only work with bytes, not Unicode \
+                    strings.")
         else:
             if isinstance(data, str):
                 # Only accept ascii unicode values.
@@ -290,7 +312,8 @@ class EncryptDecrypt(object):
                     return data.encode('ascii')
                 except UnicodeEncodeError:
                     pass
-                raise ValueError("py_des can only work with encoded strings, not Unicode.")
+                raise ValueError("py_des can only work with encoded strings,\
+                 not Unicode.")
         return data
 
 
@@ -302,13 +325,19 @@ class Message(object):
         self.length = length
         self.status = status
         self._message = message
-        messageHead = 4 * 3 # 4 bytes for each of the following
+        if status == Connection.COMM_ERROR:
+            self.command = 'ERROR'
+            self.content = message
+
+            return
+
+        message_head = 4 * 3 # 4 bytes for each of the following
         self.version = struct.unpack('>i', message[:4])[0]
         self.id = struct.unpack('>i', message[4:8])[0]
         self.type = struct.unpack('>i', message[8:12])[0]
 
         # The rest is the message
-        splits = message[messageHead:].split('\r', 2)
+        splits = message[message_head:].split('\r', 2)
         if len(splits) < 2:
             self.command = splits[0]
             self.content = ''
@@ -317,33 +346,4 @@ class Message(object):
             self.content = splits[1]
 
     def __repr__(self):
-        return '<%s : %s>' % (self.command, self.content)
-
-
-if __name__ == '__main__':
-    conn = Connection()
-    conn.connect(passwd='Swordfish')
-    conn.send('alert("Hello");', True)
-
-    print conn.send('$.version;', True)
-
-    def callback(message, *args):
-        print message.command
-        print message.content
-
-    def callback2(message, *args):
-        print message.command
-        print message.content
-        print args
-    
-    # conn1 = Connection()
-    # conn1.connect(passwd='Swordfish')
-    listener = EventListener(conn)
-    listener.start()
-    listener.subscribe('foregroundColorChanged', callback)
-    listener.subscribe('toolChanged', callback2, (True, 'xxx'))
-    listener.subscribe('currentDocumentChanged', callback)
-    
-    ## -- We need to keep the EventListener alive
-    while True:
-        time.sleep(1.0)
+        return '<%s:%s>' % (self.command, self.content)
