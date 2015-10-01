@@ -41,6 +41,8 @@ import logging
 from threading import Thread, Event
 from Queue import Queue
 
+# import wingdbstub
+
 try:
     # PyCrypto is much faster, but requires a built binary
     from Crypto.Cipher import DES3
@@ -102,7 +104,7 @@ class Connection(object):
             self._socket.settimeout(0.2)
             self._isconnected = True
             LOGGER.debug('Connected')
-        except socket.error, err:
+        except socket.error as err:
             self._socket = None
             self._isconnected = False
             LOGGER.error('Could not connect: %s', str(err))
@@ -148,12 +150,12 @@ class Connection(object):
 
         return msg
     
-    def send(self, content, recv=False):
+    def send(self, content):
         """Sends a JavaScript command to PS
 
         :param content: Script content
-        :param recv: Whether or not to wait for a response.  Good for single
-                     commands
+        :type content: str
+        :yields: :class:`.Message`
         """
         LOGGER.debug('Sending: %s', content)
         all_bytes = struct.pack('>i', Connection.PROTOCOL_VERSION)
@@ -172,26 +174,43 @@ class Connection(object):
         self._socket.send(encrypted_bytes)
         LOGGER.debug('Sent')
 
-        if recv:
-            ret = self.recv()
-            while ret is None:
-                ret = self.recv()
+        message = self.recv()
+        while message is None:
+            message = self.recv()
+            yield message
 
-            return ret
+        yield message
+
+    def send_sync(self, content):
+        """Sends a JavaScript command to Photoshop and blocks until it resutrns a value
+
+        :param content: Script content
+        """
+        
+        for result in self.send(content):
+            if result:
+                return result
 
 
 class EventListener(Thread):
     """Event thread to handle event messages from Photoshop"""
-    def __init__(self, passwd, host=None, interval=None, *args, **kwargs):
+    def __init__(self, connection, interval=0.1, *args, **kwargs):
         super(EventListener, self).__init__(*args, **kwargs)
-        
-        self._connection = Connection()
-        self._connection.connect(passwd, host)
+        self.deamon = True
+
+        self._connection = connection
         self._sub = Queue()
         self._unsub = Queue()
         self._ids = {}
         self._interval = interval
         self._stop = Event()
+
+    @classmethod
+    def connect(cls, passwd, host=None, *args, **kwargs):
+        connection = Connection()
+        connection.connect(passwd, host)
+
+        return cls(connection, *args, **kwargs)
 
     def subscribe(self, eventName, callback, args=()):
         self._sub.put({'eventName': eventName, 'func': callback, 'args': args})
@@ -211,7 +230,10 @@ class EventListener(Thread):
                 LOGGER.debug('Subscribing %s', item)
                 msg = self._connection.send(SUBSCRIBE % item['eventName'], True)
                 if msg is not None:
-                    self._ids[msg.id] = item
+                    try:
+                        self._ids[msg.id] = item
+                    except:
+                        LOGGER.error(msg)
 
             ## -- Remove subs
             while self._unsub.qsize():
