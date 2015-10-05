@@ -5,3 +5,7 @@ photoshopConnection.wpr
 touchsdk/*
 pyps.egg-info/*
 htmlcov/*
+
+*.sublime*
+dist/*
+wingdbstub.py

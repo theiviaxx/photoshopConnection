@@ -26,9 +26,11 @@ import time
 import unittest
 from multiprocessing import Process
 
+import pytest
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from pyps import Connection, EventListener
+from pyps import Connection, EventListener, ConnectionError
 
 
 def callback(message, *args):
@@ -43,13 +45,6 @@ class PSTestSuite(unittest.TestCase):
         c = Connection()
         c.connect('Swordfish')
         self.assertTrue(c.isConnected)
-        c.close()
-
-        c = Connection()
-        c.connect('badpass')
-        res = c.send_sync('$.version')
-        self.assertEqual(res.command, 'ERROR')
-
         c.close()
 
     def test_script(self):
@@ -152,6 +147,12 @@ def test_foo():
     print 'test_foo'
     time.sleep(3)
     listener.stop()
+
+def test_bad_password():
+    conn = Connection()
+    conn.connect(passwd='Swordfish1')
+    with pytest.raises(ConnectionError):
+        conn.send_sync('$.version;')
 
 if __name__ == '__main__':
     p = Process(target=f)

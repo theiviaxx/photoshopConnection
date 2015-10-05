@@ -1,15 +1,37 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+import re
+
 try:
     from setuptools import setup
 except ImportError:
     from distutils.core import setup
 
+
+readme = open('README.rst').read()
+
+requirements = [
+    'pbkdf2'
+]
+
+test_requirements = [
+    'pbkdf2'
+]
+
+version = ''
+with open('pyps/__init__.py', 'r') as fh:
+    version = re.search(r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]',
+                        fh.read(), re.MULTILINE).group(1)
+
+if not version:
+    raise RuntimeError('Cannot find version information')
+
 setup(
     name='pyps',
     description='A pure python implentation for communicating to Adobe Photoshop',
-    long_description='A pure python implentation for communicating to and subscribing to events from Adobe Photoshop',
-    version='0.5.1',
+    long_description=readme,
+    version=version,
     author='Brett Dixon',
     author_email='theiviaxx@gmail.com',
     license='MIT',

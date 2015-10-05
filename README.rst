@@ -2,7 +2,7 @@ Photoshop Connection
 --------------------
 
 Photoshop Connection is released under the MIT license. It is simple and easy to understand and places almost no restrictions on what you can do with Photoshop Connection.
-[More Information](http://en.wikipedia.org/wiki/MIT_License)
+`More Information <http://en.wikipedia.org/wiki/MIT_License>`_
 
 A python TCP socket connection to Photoshop CS5.5.  This is a simple
 wrapper class to facilitate sending arbitrary JavaScript to Photoshop and
@@ -14,6 +14,8 @@ There is a EventListener class to subscribe to events in Photoshop.
 
 Example
 -------
+
+::
 
     from pyps import Connection, EventListener
     

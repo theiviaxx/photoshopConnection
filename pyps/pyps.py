@@ -1,28 +1,13 @@
-## pyps: v0.5
-##
-## -----------------------------------------------------------------------------
-##
-## The MIT License (MIT)
-##
-## Copyright (c) 2013 Brett Dixon
-##
-## Permission is hereby granted, free of charge, to any person obtaining a copy
-## of this software and associated documentation files (the "Software"), to deal
-## in the Software without restriction, including without limitation the rights
-## to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-## copies of the Software, and to permit persons to whom the Software is
-## furnished to do so, subject to the following conditions:
-##
-## The above copyright notice and this permission notice shall be included in
-## all copies or substantial portions of the Software.
-##
-## THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-## IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-## FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-## AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-## LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-## OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-## THE SOFTWARE.
+# -*- coding: utf-8 -*-
+
+"""
+Python Photoshop
+~~~~~~~~~~~~~~~~~~~~~
+
+
+:copyright: (c) 2015 by Brett Dixon
+:license: MIT, see LICENSE for more details
+"""
 
 """A python TCP socket connection to Photoshop CS5.5.  This is a simple
 wrapper class to facilitate sending arbitrary JavaScript to Photoshop and
@@ -33,15 +18,12 @@ open in Photoshop.
 There is a EventListener class to subscribe to events in Photoshop.
 """
 
-
 import sys
 import socket
 import struct
 import logging
 from threading import Thread, Event
 from Queue import Queue
-
-# import wingdbstub
 
 try:
     # PyCrypto is much faster, but requires a built binary
@@ -72,6 +54,10 @@ executeAction( idNS, desc1, DialogModes.NO );
 def enum(*sequential, **named):
     enums = dict(zip(sequential, range(len(sequential))), **named)
     return type('Enum', (), enums)
+
+
+class ConnectionError(Exception):
+    """Could not connect to Photoshop"""
 
 
 class Connection(object):
@@ -108,6 +94,8 @@ class Connection(object):
             self._socket = None
             self._isconnected = False
             LOGGER.error('Could not connect: %s', str(err))
+
+            raise ConnectionError(err)
         
         self._crypt = EncryptDecrypt(passwd)
     
@@ -349,7 +337,9 @@ class Message(object):
         self._message = message
         if status == Connection.COMM_ERROR:
             self.command = 'ERROR'
-            self.content = message
+            self.content = message[12:]
+            if 'decrypting' in self.content:
+                raise ConnectionError('Incorrect password')
 
             return
 
