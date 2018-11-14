@@ -23,77 +23,77 @@
 import os
 import sys
 import time
-import unittest
 from multiprocessing import Process
 
 import pytest
+import six
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from pyps import Connection, EventListener, ConnectionError
 
 
 def callback(message, *args):
-    print 'callback', message
+    print('callback', message)
+
 
 def callback2(message, *args):
-    print 'callbck2', message
+    print('callbck2', message)
 
-class PSTestSuite(unittest.TestCase):
-    def test_connection(self):
-        
-        c = Connection()
-        c.connect('Swordfish')
-        self.assertTrue(c.isConnected)
-        c.close()
 
-    def test_script(self):
-        c = Connection()
-        c.connect('Swordfish')
+def test_connection():
+    c = Connection()
+    c.connect('Swordfish')
+    assert c.isConnected is True
+    c.close()
 
-        res = c.send_sync('$.version;')
-        self.assertEqual(res.command, '4.5.6')
-        self.assertEqual(repr(res), '<4.5.6:>')
 
-        res = c.send_sync('$.os')
-        self.assertEqual(res.command, 'Windows 7/64 6.3  ')
+def test_script():
+    c = Connection()
+    c.connect('Swordfish')
 
-        res = c.send_sync('alert(x);')
-        self.assertEqual(res.command, '')
+    res = c.send_sync('$.version;')
+    assert res.command == six.b('4.5.8')
 
-        c.close()
+    res = c.send_sync('$.os')
+    assert res.command == six.b('Windows')
 
-    def test_listener(self):
-        c = Connection()
-        c.connect('Swordfish')
-        c.send_sync('app.foregroundColor.rgb.red=255')
+    res = c.send_sync('alert(x);')
+    assert res.command == six.b('')
 
-        e = EventListener.connect('Swordfish', interval=0.2)
-        e.start()
-        e.subscribe('foregroundColorChanged', callback)
-        e.subscribe('backgroundColorChanged', callback2)
+    c.close()
+
+
+def test_listener():
+    c = Connection()
+    c.connect('Swordfish')
+    c.send_sync('app.foregroundColor.rgb.red=255')
+
+    e = EventListener.connect('Swordfish', interval=0.2)
+    e.start()
+    e.subscribe('foregroundColorChanged', callback)
+    e.subscribe('backgroundColorChanged', callback2)
+    time.sleep(1)
+    
+    c.send_sync('app.foregroundColor.rgb.red=0')
+    c.send_sync('app.foregroundColor.rgb.red=10')
+    c.send_sync('app.foregroundColor.rgb.red=20')
+    c.send_sync('app.foregroundColor.rgb.red=30')
+    
+    c.send_sync('app.backgroundColor.rgb.red=0')
+    c.send_sync('app.backgroundColor.rgb.red=10')
+    c.send_sync('app.backgroundColor.rgb.red=20')
+    c.send_sync('app.backgroundColor.rgb.red=30')
+
+    i = 0
+    while i < 2:
         time.sleep(1)
-        
-        c.send_sync('app.foregroundColor.rgb.red=0')
-        c.send_sync('app.foregroundColor.rgb.red=10')
-        c.send_sync('app.foregroundColor.rgb.red=20')
-        c.send_sync('app.foregroundColor.rgb.red=30')
-        
-        c.send_sync('app.backgroundColor.rgb.red=0')
-        c.send_sync('app.backgroundColor.rgb.red=10')
-        c.send_sync('app.backgroundColor.rgb.red=20')
-        c.send_sync('app.backgroundColor.rgb.red=30')
+        i += 1
 
-        i = 0
-        while i < 2:
-            time.sleep(1)
-            i += 1
+    e.unsubscribe('foregroundColorChanged', callback)
+    e.unsubscribe('backgroundColorChanged', callback2)
 
-        e.unsubscribe('foregroundColorChanged', callback)
-        e.unsubscribe('backgroundColorChanged', callback2)
-
-        e.stop()
-        c.close()
+    e.stop()
+    c.close()
 
     # def test_no_photoshop(self):
     #     ## -- Test when PS is not running
@@ -104,10 +104,11 @@ class PSTestSuite(unittest.TestCase):
     #     c.connect('Swordfish')
     #     self.assertFalse(c.isConnected)
 
+
 def f():
     def callback(message, *args):
-        print message.command
-        print message.content
+        print(message.command)
+        print(message.content)
 
     conn = Connection()
     conn.connect(passwd='Swordfish')
@@ -119,23 +120,25 @@ def f():
     conn.send_sync('app.foregroundColor.rgb.red=20')
     conn.send_sync('app.foregroundColor.rgb.red=30')
     time.sleep(2)
-    print 'done'
+    print('done')
+
 
 def test_foo():
     conn = Connection()
     conn.connect(passwd='Swordfish')
-    #conn.send('alert("Hello");', True)
+    # list(conn.send('alert("Hello");'))
 
-    print conn.send_sync('$.version;')
+    print(conn.send_sync('$.version;'))
 
     def callback(message, *args):
-        print message.command
-        print message.content
+        print(message.command)
+        print(message.content)
+
 
     def callback2(message, *args):
-        print message.command
-        print message.content
-        print args
+        print(message.command)
+        print(message.content)
+        print(args)
 
     listener = EventListener(conn)
     listener.start()
@@ -144,15 +147,17 @@ def test_foo():
 
     conn.send_sync('app.documents.add(100, 100)')
 
-    print 'test_foo'
+    print('test_foo')
     time.sleep(3)
     listener.stop()
+
 
 def test_bad_password():
     conn = Connection()
     conn.connect(passwd='Swordfish1')
     with pytest.raises(ConnectionError):
         conn.send_sync('$.version;')
+
 
 if __name__ == '__main__':
     p = Process(target=f)
