@@ -12,11 +12,14 @@ except ImportError:
 readme = open('README.rst').read()
 
 requirements = [
-    'pbkdf2'
+    'pbkdf2',
+    'six'
 ]
 
 test_requirements = [
-    'pbkdf2'
+    'pbkdf2',
+    'six',
+    'pytest'
 ]
 
 version = ''
@@ -38,9 +41,7 @@ setup(
     url='https://github.com/theiviaxx/photoshopConnection',
     platforms='any',
     include_package_data=True,
-    install_requires=[
-        'pbkdf2'
-    ],
+    install_requires=requirements,
     packages=[
         'pyps',
     ],
@@ -51,6 +52,9 @@ setup(
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
     zip_safe=False,
     test_suite='tests',
