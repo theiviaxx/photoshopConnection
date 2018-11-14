@@ -23,7 +23,9 @@ import socket
 import struct
 import logging
 from threading import Thread, Event
-from Queue import Queue
+
+import six
+from six.moves import queue as Queue
 
 try:
     # PyCrypto is much faster, but requires a built binary
@@ -31,7 +33,7 @@ try:
     PYCRYPTO = True
 except ImportError:
     # py_des is pure python, but slower.  Should be ok for sending scripts
-    import py_des
+    from ._des import triple_des, PAD_PKCS5, CBC
     PYCRYPTO = False
 
 from pbkdf2 import PBKDF2
@@ -118,7 +120,7 @@ class Connection(object):
         comm_status = struct.unpack('>i', self._socket.recv(4))[0]
         LOGGER.debug('Status: %i', comm_status)
         bytes_received = 0
-        message = ""
+        message = b""
         
         while bytes_received < message_length:
             if message_length - bytes_received >= 1024:
@@ -151,7 +153,7 @@ class Connection(object):
         all_bytes += struct.pack('>i', 2)
         self._id += 1
         for char in content:
-            all_bytes += struct.pack('>c', char)
+            all_bytes += struct.pack('>c', char.encode('utf8'))
 
         encrypted_bytes = self._crypt.encrypt(all_bytes)
 
@@ -187,8 +189,8 @@ class EventListener(Thread):
         self.deamon = True
 
         self._connection = connection
-        self._sub = Queue()
-        self._unsub = Queue()
+        self._sub = Queue.Queue()
+        self._unsub = Queue.Queue()
         self._ids = {}
         self._interval = interval
         self._stop = Event()
@@ -227,7 +229,7 @@ class EventListener(Thread):
             while self._unsub.qsize():
                 item = self._unsub.get()
                 LOGGER.debug('Unsubscribing %s', item)
-                for id_, sub in self._ids.iteritems():
+                for id_, sub in six.iteritems(self._ids):
                     if sub['eventName'] == item['eventName'] and \
                     sub['func'] == item['func']:
                         del self._ids[id_]
@@ -253,8 +255,8 @@ class EncryptDecrypt(object):
     KEY_LENGTH = 24
     def __init__(self, passPhrase):
         key = PBKDF2(
-            bytes(passPhrase),
-            bytes(EncryptDecrypt.SALT),
+            six.b(passPhrase),
+            six.b(EncryptDecrypt.SALT),
             iterations=EncryptDecrypt.ITERACTIONCOUNT
         ).read(EncryptDecrypt.KEY_LENGTH)
         iv = '\0\0\0\0\0\0\0\0'
@@ -264,17 +266,17 @@ class EncryptDecrypt(object):
             self.enc = DES3.new(key, DES3.MODE_CBC, iv)
             self.dec = DES3.new(key, DES3.MODE_CBC, iv)
         else:
-            self.enc = py_des.triple_des(
+            self.enc = triple_des(
                 key,
-                py_des.CBC,
+                CBC,
                 iv,
-                padmode=py_des.PAD_PKCS5
+                padmode=PAD_PKCS5
             )
-            self.dec = py_des.triple_des(
+            self.dec = triple_des(
                 key,
-                py_des.CBC,
+                CBC,
                 iv,
-                padmode=py_des.PAD_PKCS5
+                padmode=PAD_PKCS5
             )
 
     def encrypt(self, b):
@@ -312,7 +314,7 @@ class EncryptDecrypt(object):
         # Only accept byte strings or ascii unicode values, otherwise
         # there is no way to correctly decode the data into bytes.
         if PYTHON_MAJOR_VERSION < 3:
-            if isinstance(data, unicode):
+            if not isinstance(data, six.text_type):
                 raise ValueError("py_des can only work with bytes, not Unicode \
                     strings.")
         else:
@@ -338,7 +340,7 @@ class Message(object):
         if status == Connection.COMM_ERROR:
             self.command = 'ERROR'
             self.content = message[12:]
-            if 'decrypting' in self.content:
+            if b'decrypting' in self.content:
                 raise ConnectionError('Incorrect password')
 
             return
@@ -349,7 +351,7 @@ class Message(object):
         self.type = struct.unpack('>i', message[8:12])[0]
 
         # The rest is the message
-        splits = message[message_head:].split('\r', 2)
+        splits = message[message_head:].split(b'\r', 2)
         if len(splits) < 2:
             self.command = splits[0]
             self.content = ''
